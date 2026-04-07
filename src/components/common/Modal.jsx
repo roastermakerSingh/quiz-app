@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import Button from './Button';
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = 520 }) {
   useEffect(() => {

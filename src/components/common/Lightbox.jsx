@@ -2,7 +2,7 @@ import React, { useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 
 export default function Lightbox() {
-  const { lightboxSrc, setLightboxSrc, lightboxList, setLightboxList, lightboxIndex, setLightboxIndex } = useApp();
+  const { lightboxSrc, setLightboxSrc, lightboxList, lightboxIndex, setLightboxIndex } = useApp();
 
   const hasList = lightboxList && lightboxList.length > 1;
 

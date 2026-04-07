@@ -10,7 +10,7 @@ export default function DashboardPanel() {
   const {
     quizState, setQuizState,
     resultsPublished, setResultsPublished,
-    participants, images, questions,
+    participants, images, questions, members, donations,
   } = useApp();
   const { toast } = useToast();
 
@@ -18,46 +18,52 @@ export default function DashboardPanel() {
     ? (participants.reduce((a, p) => a + pct(p.score, p.total), 0) / participants.length).toFixed(1)
     : 0;
 
+  const totalDonated = donations
+    .filter(d => d.payment_status === 'completed')
+    .reduce((s, d) => s + (d.amount || 0), 0);
+
+  const pendingMembers = members.filter(m => m.status === 'pending').length;
+
   const handleQuizStart  = () => { setQuizState('active'); toast('क्विज़ शुरू हो गया!', 'success'); };
-  const handleQuizStop   = () => { setQuizState('ended');  toast('क्विज़ बंद किया गया।', 'info');   };
+  const handleQuizStop   = () => { setQuizState('ended');  toast('क्विज़ बंद किया गया।', 'info'); };
   const handleQuizReset  = () => { setQuizState('idle');   toast('क्विज़ रीसेट किया गया।', 'info'); };
   const handlePublish    = () => { setResultsPublished(true);  toast('परिणाम प्रकाशित हुए!', 'success'); };
-  const handleUnpublish  = () => { setResultsPublished(false); toast('परिणाम छिपाए गए।', 'info');       };
+  const handleUnpublish  = () => { setResultsPublished(false); toast('परिणाम छिपाए गए।', 'info'); };
 
   return (
     <div className="dashboard">
       {/* Stats */}
       <div className="dashboard__stats">
-        <StatCard number={participants.length} label="कुल प्रतिभागी" />
-        <StatCard number={questions.length}    label="कुल प्रश्न"    />
-        <StatCard number={images.length}       label="कुल चित्र"     />
-        <StatCard number={`${avgScore}%`}      label="औसत स्कोर"    accent />
+        <StatCard number={participants.length} label="प्रतिभागी" />
+        <StatCard number={questions.length}    label="प्रश्न" />
+        <StatCard number={images.length}       label="चित्र" />
+        <StatCard number={members.filter(m => m.status === 'approved').length} label="सदस्य" />
+        <StatCard number={`₹${totalDonated.toLocaleString('en-IN')}`} label="कुल दान" accent />
+        <StatCard number={`${avgScore}%`} label="औसत स्कोर" />
       </div>
+
+      {pendingMembers > 0 && (
+        <div className="alert alert--warning" style={{ marginBottom: '1.25rem' }}>
+          ⏳ <strong>{pendingMembers}</strong> सदस्य आवेदन प्रतीक्षित हैं — Members tab से स्वीकार/अस्वीकार करें।
+        </div>
+      )}
 
       {/* Quiz Control */}
       <div className="dashboard__panel">
         <h3 className="dashboard__panel-title">क्विज़ नियंत्रण</h3>
         <div className="dashboard__control-row">
           <div className="dashboard__status-row">
-            <span className="dashboard__status-label">वर्तमान स्थिति:</span>
-            <Badge
-              variant={quizState === 'active' ? 'active' : quizState === 'ended' ? 'ended' : 'idle'}
-              dot
-            >
+            <span className="dashboard__status-label">स्थिति:</span>
+            <Badge variant={quizState === 'active' ? 'active' : quizState === 'ended' ? 'ended' : 'idle'} dot>
               {quizState === 'active' ? 'चालू (Live)' : quizState === 'ended' ? 'समाप्त' : 'निष्क्रिय'}
             </Badge>
           </div>
           <div className="dashboard__btn-row">
-            {quizState === 'idle'   && <Button variant="success" onClick={handleQuizStart}>▶ क्विज़ शुरू करें</Button>}
-            {quizState === 'active' && <Button variant="danger"  onClick={handleQuizStop}>⏹ क्विज़ बंद करें</Button>}
-            {quizState === 'ended'  && <Button variant="secondary" onClick={handleQuizReset}>🔄 रीसेट करें</Button>}
+            {quizState === 'idle'   && <Button variant="success" onClick={handleQuizStart}>▶ शुरू करें</Button>}
+            {quizState === 'active' && <Button variant="danger"  onClick={handleQuizStop}>⏹ बंद करें</Button>}
+            {quizState === 'ended'  && <Button variant="secondary" onClick={handleQuizReset}>🔄 रीसेट</Button>}
           </div>
         </div>
-        <p className="dashboard__hint">
-          {quizState === 'idle'   && 'क्विज़ शुरू करने पर सभी यूज़र क्विज़ दे सकेंगे।'}
-          {quizState === 'active' && '🟢 क्विज़ अभी लाइव है। प्रतिभागी भाग ले रहे हैं।'}
-          {quizState === 'ended'  && 'क्विज़ समाप्त। परिणाम प्रकाशित करें या रीसेट करें।'}
-        </p>
       </div>
 
       {/* Results Control */}
@@ -72,27 +78,22 @@ export default function DashboardPanel() {
           </div>
           <div className="dashboard__btn-row">
             {!resultsPublished
-              ? <Button variant="primary"  onClick={handlePublish}>🏆 परिणाम प्रकाशित करें</Button>
-              : <Button variant="danger"   onClick={handleUnpublish}>🔒 परिणाम छिपाएं</Button>
+              ? <Button variant="primary"  onClick={handlePublish}>🏆 प्रकाशित करें</Button>
+              : <Button variant="danger"   onClick={handleUnpublish}>🔒 छिपाएं</Button>
             }
           </div>
         </div>
-        <p className="dashboard__hint">
-          {resultsPublished
-            ? 'परिणाम पृष्ठ सभी यूज़र को दिखाई दे रहा है।'
-            : 'परिणाम प्रकाशित करने पर नेविगेशन में "परिणाम" लिंक दिखेगा।'}
-        </p>
       </div>
 
       {/* Analytics */}
       {participants.length > 0 && (
         <div className="dashboard__panel">
-          <h3 className="dashboard__panel-title">Analytics</h3>
+          <h3 className="dashboard__panel-title">Score Analytics</h3>
           <div className="dashboard__analytics">
             {[
-              { label: '80%+ स्कोर',  count: participants.filter(p => pct(p.score, p.total) >= 80).length },
-              { label: '60-79% स्कोर', count: participants.filter(p => { const v = pct(p.score, p.total); return v >= 60 && v < 80; }).length },
-              { label: '60% से कम',   count: participants.filter(p => pct(p.score, p.total) < 60).length  },
+              { label: '80%+',   count: participants.filter(p => pct(p.score, p.total) >= 80).length },
+              { label: '60-79%', count: participants.filter(p => { const v = pct(p.score, p.total); return v >= 60 && v < 80; }).length },
+              { label: '<60%',   count: participants.filter(p => pct(p.score, p.total) < 60).length  },
             ].map((item, i) => (
               <div key={i} className="dashboard__analytics-item">
                 <span className="dashboard__analytics-count">{item.count}</span>

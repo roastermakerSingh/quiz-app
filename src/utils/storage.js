@@ -1,84 +1,108 @@
-// ─── Storage Keys ────────────────────────────────────────────
+// ─── Storage Keys (localStorage — only for session + quiz state) ──
 export const KEYS = {
-  QUESTIONS:        'bde_questions',
-  IMAGES:           'bde_images',
-  PARTICIPANTS:     'bde_participants',
-  QUIZ_STATE:       'bde_quiz_state',   // 'idle' | 'active' | 'ended'
-  RESULTS_PUBLISHED:'bde_results_published',
   ADMIN_SESSION:    'bde_admin_session',
+  QUIZ_STATE:       'bde_quiz_state',
+  RESULTS_PUBLISHED:'bde_results_published',
 };
 
-// ─── Admin Credentials (change before deployment) ─────────────
-export const ADMIN_CREDS = {
-  username: 'admin',
-  password: 'bajrang2024',
-};
-
-// ─── DB helpers ───────────────────────────────────────────────
+// ─── localStorage helpers ─────────────────────────────────────────
 export const db = {
-  get(key, defaultValue = null) {
+  get(key, def = null) {
     try {
-      const raw = localStorage.getItem(key);
-      return raw !== null ? JSON.parse(raw) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
+      const v = localStorage.getItem(key);
+      return v !== null ? JSON.parse(v) : def;
+    } catch { return def; }
   },
-
-  set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      // Dispatch storage event for cross-tab sync
-      window.dispatchEvent(new StorageEvent('storage', { key }));
-    } catch (err) {
-      console.error('Storage error:', err);
-    }
-  },
-
-  remove(key) {
-    localStorage.removeItem(key);
+  set(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
   },
 };
 
-// ─── Seed initial data ────────────────────────────────────────
-export function seedInitialData() {
-  if (db.get(KEYS.QUESTIONS) !== null) return; // already seeded
+// ─── SQL schema for Supabase setup ────────────────────────────────
+export const SUPABASE_SCHEMA = `
+-- Run this in Supabase → SQL Editor
 
-  db.set(KEYS.QUESTIONS, [
-    {
-      id: 1,
-      question: 'हनुमान जी के पिता का नाम क्या था?',
-      options: ['केसरी', 'वायु', 'सुमेरु', 'अंजन'],
-      correct: 0,
-    },
-    {
-      id: 2,
-      question: 'बजरंग बली का जन्मस्थान कौन सा माना जाता है?',
-      options: ['अयोध्या', 'किष्किंधा', 'लंका', 'अंजनाद्रि'],
-      correct: 3,
-    },
-    {
-      id: 3,
-      question: 'राम रक्षा स्तोत्र के रचयिता कौन हैं?',
-      options: ['वाल्मीकि', 'बुधकौशिक', 'तुलसीदास', 'व्यास'],
-      correct: 1,
-    },
-    {
-      id: 4,
-      question: 'हनुमान चालीसा में कितनी चौपाइयाँ हैं?',
-      options: ['38', '40', '42', '44'],
-      correct: 1,
-    },
-    {
-      id: 5,
-      question: 'रामायण के किस काण्ड में हनुमान जी लंका जाते हैं?',
-      options: ['बाल काण्ड', 'किष्किंधा काण्ड', 'सुंदर काण्ड', 'युद्ध काण्ड'],
-      correct: 2,
-    },
-  ]);
+create table if not exists images (
+  id          uuid primary key default gen_random_uuid(),
+  url         text not null,
+  public_id   text,
+  caption     text default '',
+  year        text default '',
+  created_at  timestamptz default now()
+);
 
-  db.set(KEYS.QUIZ_STATE, 'idle');
-  db.set(KEYS.RESULTS_PUBLISHED, false);
-  db.set(KEYS.IMAGES, []);
-  db.set(KEYS.PARTICIPANTS, []);
-}
+create table if not exists questions (
+  id          uuid primary key default gen_random_uuid(),
+  question    text not null,
+  options     jsonb not null,
+  correct     int  not null,
+  created_at  timestamptz default now()
+);
+
+create table if not exists participants (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null,
+  mobile      text not null unique,
+  score       int  default 0,
+  total       int  default 0,
+  created_at  timestamptz default now()
+);
+
+create table if not exists members (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null,
+  age         int,
+  address     text,
+  mobile      text not null unique,
+  email       text,
+  photo_url   text,
+  photo_public_id text,
+  status      text default 'pending',  -- pending | approved | rejected
+  created_at  timestamptz default now()
+);
+
+create table if not exists donations (
+  id              uuid primary key default gen_random_uuid(),
+  donor_name      text,
+  donor_email     text,
+  donor_mobile    text,
+  amount          int  not null,
+  payment_id      text,
+  payment_status  text default 'pending',
+  message         text,
+  created_at      timestamptz default now()
+);
+
+create table if not exists settings (
+  key    text primary key,
+  value  text
+);
+
+-- Enable Row Level Security
+alter table images       enable row level security;
+alter table questions    enable row level security;
+alter table participants enable row level security;
+alter table members      enable row level security;
+alter table donations    enable row level security;
+alter table settings     enable row level security;
+
+-- Allow all reads (public)
+create policy "Public read images"       on images       for select using (true);
+create policy "Public read questions"    on questions    for select using (true);
+create policy "Public read participants" on participants for select using (true);
+create policy "Public read members"      on members      for select using (status = 'approved');
+create policy "Public read donations"    on donations    for select using (true);
+create policy "Public read settings"     on settings     for select using (true);
+
+-- Allow all inserts from anon (members, donations, participants)
+create policy "Public insert members"      on members      for insert with check (true);
+create policy "Public insert donations"    on donations    for insert with check (true);
+create policy "Public insert participants" on participants for insert with check (true);
+
+-- Allow all operations (for admin via anon key — acceptable for this app)
+create policy "Admin all images"    on images    for all using (true) with check (true);
+create policy "Admin all questions" on questions for all using (true) with check (true);
+create policy "Admin all members"   on members   for all using (true) with check (true);
+create policy "Admin all settings"  on settings  for all using (true) with check (true);
+create policy "Admin all donations" on donations for all using (true) with check (true);
+`;

@@ -4,8 +4,9 @@ import { useToast } from '../../context/ToastContext';
 import Button from '../common/Button';
 import Input from '../common/Input';
 import EmptyState from '../common/EmptyState';
-import { compressImage } from '../../utils/imageUtils';
-import { uid, currentYear } from '../../utils/helpers';
+import { uploadToCloudinary } from '../../lib/cloudinary';
+import { supabase, TABLES } from '../../lib/supabase';
+import { currentYear } from '../../utils/helpers';
 
 export default function ImagesPanel() {
   const { images, setImages, openLightbox } = useApp();
@@ -21,36 +22,47 @@ export default function ImagesPanel() {
     if (!files.length) return;
     setUploading(true);
     setProgress(0);
+    let uploaded = 0;
+
     for (let i = 0; i < files.length; i++) {
       try {
-        const url = await compressImage(files[i]);
-        const newImg = {
-          id:       uid(),
+        // Upload to Cloudinary
+        const { url, publicId } = await uploadToCloudinary(files[i], 'gallery');
+        // Save record to Supabase
+        const { data, error } = await supabase.from(TABLES.IMAGES).insert({
           url,
-          caption:  caption || files[i].name.replace(/\.[^.]+$/, ''),
-          year:     year || currentYear(),
-          uploaded: new Date().toLocaleDateString('hi-IN'),
-        };
-        setImages(prev => [...prev, newImg]);
+          public_id: publicId,
+          caption:   caption || files[i].name.replace(/\.[^.]+$/, ''),
+          year:      year || currentYear(),
+        }).select().single();
+
+        if (error) throw error;
+        setImages(prev => [data, ...prev]);
+        uploaded++;
         setProgress(Math.round(((i + 1) / files.length) * 100));
-      } catch {
-        toast(`${files[i].name} अपलोड नहीं हो सका`, 'error');
+      } catch (err) {
+        toast(`${files[i].name}: ${err.message}`, 'error');
       }
     }
+
     setUploading(false);
     setCaption('');
     if (fileRef.current) fileRef.current.value = '';
-    toast(`${files.length} चित्र सफलतापूर्वक अपलोड हुए!`, 'success');
+    if (uploaded > 0) toast(`${uploaded} चित्र सफलतापूर्वक अपलोड हुए!`, 'success');
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (img) => {
     if (!window.confirm('यह चित्र हटाएं?')) return;
-    setImages(prev => prev.filter(img => img.id !== id));
+    const { error } = await supabase.from(TABLES.IMAGES).delete().eq('id', img.id);
+    if (error) { toast('हटाने में समस्या हुई', 'error'); return; }
+    setImages(prev => prev.filter(x => x.id !== img.id));
     toast('चित्र हटा दिया गया', 'info');
   };
 
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
     if (!window.confirm(`सभी ${images.length} चित्र हटाएं?`)) return;
+    const { error } = await supabase.from(TABLES.IMAGES).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) { toast('हटाने में समस्या हुई', 'error'); return; }
     setImages([]);
     toast('सभी चित्र हटाए गए', 'info');
   };
@@ -58,7 +70,7 @@ export default function ImagesPanel() {
   return (
     <div className="images-panel">
       <div className="upload-card">
-        <h3 className="upload-card__title">नए चित्र अपलोड करें</h3>
+        <h3 className="upload-card__title">नए चित्र अपलोड करें (Cloudinary)</h3>
         <div className="upload-card__fields">
           <Input label="कैप्शन (वैकल्पिक)" placeholder="चित्र का विवरण"
             value={caption} onChange={e => setCaption(e.target.value)} />
@@ -71,17 +83,17 @@ export default function ImagesPanel() {
           {uploading ? (
             <>
               <div className="dropzone__icon">⏳</div>
-              <div className="dropzone__text">अपलोड हो रहा है... {progress}%</div>
+              <div className="dropzone__text">Cloudinary पर अपलोड हो रहा है... {progress}%</div>
               <div className="dropzone__progress">
                 <div className="dropzone__progress-bar" style={{ width: `${progress}%` }} />
               </div>
             </>
           ) : (
             <>
-              <div className="dropzone__icon">📤</div>
+              <div className="dropzone__icon">☁️</div>
               <div className="dropzone__text">
                 चित्र चुनें या यहाँ खींचें
-                <span className="dropzone__hint">Multiple images · Auto-compressed</span>
+                <span className="dropzone__hint">Stored on Cloudinary · Visible to all users</span>
               </div>
             </>
           )}
@@ -100,7 +112,7 @@ export default function ImagesPanel() {
       ) : (
         <div className="admin-gallery-grid">
           {images.map((img, i) => (
-            <div key={img.id || i} className="admin-gallery-item">
+            <div key={img.id} className="admin-gallery-item">
               <img src={img.url} alt={img.caption} className="admin-gallery-item__img"
                 onClick={() => openLightbox(images, i)} />
               <div className="admin-gallery-item__info">
@@ -108,7 +120,7 @@ export default function ImagesPanel() {
                 <span className="admin-gallery-item__year">{img.year}</span>
               </div>
               <button className="admin-gallery-item__delete"
-                onClick={() => handleDelete(img.id)} title="हटाएं">✕</button>
+                onClick={() => handleDelete(img)} title="हटाएं">✕</button>
             </div>
           ))}
         </div>
